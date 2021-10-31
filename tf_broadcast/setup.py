@@ -1,6 +1,6 @@
 from setuptools import setup
 
-package_name = "tf_lookup"
+package_name = "tf_broadcast"
 
 setup(
     name=package_name,
@@ -13,7 +13,7 @@ setup(
     install_requires=["setuptools"],
     zip_safe=True,
     author="Endre Erős, Martin Dahl",
-    author_email="endree@chalmers.se, martin.dahl@chalmers.se",
+    author_email="endree@chalmers.se",
     maintainer="Endre Erős",
     maintainer_email="endree@chalmers.se",
     keywords=["ROS2"],
@@ -22,15 +22,13 @@ setup(
         "Programming Language :: Python",
         "Topic :: Software Development",
     ],
-    description="The TF Lookup Package.",
+    description="The TF Broadcast Service.",
     license="",
     tests_require=["pytest"],
     entry_points={
         "console_scripts": [
-            "tf_lookup = tf_lookup.tf_lookup:main",
-            "tf_broadcast = tf_lookup.tf_broadcast:main",
-            "tf_lookup_test_client = tf_lookup.tf_lookup_test_client:main",
-            "tf_broadcast_client = tf_lookup.tf_broadcast_client:main",
+            "tf_broadcast = tf_broadcast.tf_broadcast:main",
+            "tf_broadcast_test_client = tf_broadcast.tf_broadcast_test_client:main",
         ],
     },
 )

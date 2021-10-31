@@ -25,7 +25,7 @@ def generate_launch_description():
     )
 
     tf_broadcast_node = Node(
-        package="tf_lookup",
+        package="tf_broadcast",
         executable="tf_broadcast",
         namespace="",
         output="screen",
@@ -46,7 +46,7 @@ def generate_launch_description():
 
     tf_sms_client_node = Node(
         package="tf_sms",
-        executable="tf_sms_client",
+        executable="tf_sms_test_client",
         namespace="",
         output="screen",
         parameters=[parameters],

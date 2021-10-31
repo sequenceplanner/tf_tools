@@ -29,7 +29,7 @@ class TFBroadcastNode(Node):
         self.create_timer(0.01, self.tf_broadcaster_timer_callback)
         self.create_timer(1.0, self.static_tf_broadcaster_timer_callback)
 
-        self.get_logger().info("TF Scene Manipulation Node started")
+        self.get_logger().info("TF Scene Manipulation Node started.")
 
         self.scenario_path = self.declare_parameter("scenario_path", "default_value")
         self.scenario_path = (

@@ -16,5 +16,5 @@ name = "tf_sms"
 path = "src/tf_sms.rs"
 
 [[bin]]
-name = "tf_sms_client"
-path = "src/tf_sms_client.rs"
+name = "tf_sms_test_client"
+path = "src/tf_sms_test_client.rs"

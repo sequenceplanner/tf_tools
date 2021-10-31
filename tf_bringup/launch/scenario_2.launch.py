@@ -25,6 +25,16 @@ def generate_launch_description():
         emulate_tty=True
     )
 
+    tf_broadcast_node = Node(
+        package="tf_broadcast",
+        executable="tf_broadcast",
+        namespace="",
+        output="screen",
+        parameters=[parameters],
+        remappings=[("/tf", "tf"), ("/tf_static", "tf_static")],
+        emulate_tty=True
+    )
+
     tf_sms_node = Node(
         package="tf_sms",
         executable="tf_sms",
@@ -47,6 +57,7 @@ def generate_launch_description():
 
     nodes_to_start = [
         tf_lookup_node,
+        tf_broadcast_node,
         tf_sms_node,
         rviz_node
     ]

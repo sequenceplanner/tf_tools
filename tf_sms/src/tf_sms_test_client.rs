@@ -13,9 +13,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         node.spin_once(std::time::Duration::from_millis(100));
     });
 
-    println!("waiting for service...");
+    r2r::log_warn!("log", "Waiting for tf sms service...");
     waiting.await?;
-    println!("service available.");
+    r2r::log_info!("log", "TF sms service available.");
 
     std::thread::sleep(std::time::Duration::from_millis(3000));
 

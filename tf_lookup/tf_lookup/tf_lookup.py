@@ -91,20 +91,20 @@ class TFLookupServerNode(Node):
         while rclpy.ok():
             time.sleep(0.01)
             if datetime.datetime.now() < deadline:
-                # if Variables.result != TransformStamped():
-                self.get_logger().info(
-                    f"Looked up tf for '{Variables.parent}' to '{Variables.child}'"
-                )
-
-                response.success = True
-                response.transform = Variables.result
-                Variables.mutex.acquire()
-                Variables.parent = ""
-                Variables.child = ""
-                Variables.result = TransformStamped()
-                Variables.mutex.release()
-
-                return response
+                if Variables.result != TransformStamped():
+                    self.get_logger().info(
+                        f"Looked up tf for '{Variables.parent}' to '{Variables.child}'"
+                    )
+    
+                    response.success = True
+                    response.transform = Variables.result
+                    Variables.mutex.acquire()
+                    Variables.parent = ""
+                    Variables.child = ""
+                    Variables.result = TransformStamped()
+                    Variables.mutex.release()
+    
+                    return response
             else:
                 self.get_logger().error(
                     f"Failed to lookup tf, deadline expired for '{Variables.parent}' to '{Variables.child}'"
