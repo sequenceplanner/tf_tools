@@ -1,7 +1,7 @@
 {
     "show": true,
     "active": false,
-    "child_frame": "frame_1",
+    "child_frame": "base",
     "parent_frame": "world",
     "transform": {
         "translation": {

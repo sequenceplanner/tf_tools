@@ -1,9 +1,7 @@
 use futures::stream::Stream;
-use futures::Future;
 use futures::StreamExt;
 use r2r::geometry_msgs::msg::Transform;
 use r2r::geometry_msgs::msg::TransformStamped;
-use r2r::tf_tools_msgs::srv::GetBroadcastedFrames;
 use r2r::tf_tools_msgs::srv::LookupTransform;
 use r2r::tf_tools_msgs::srv::ManipulateBroadcast;
 use r2r::tf_tools_msgs::srv::ManipulateScene;
@@ -18,35 +16,35 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let tf_lookup_client = node.create_client::<LookupTransform::Service>("tf_lookup")?;
     let tf_broadcast_client =
         node.create_client::<ManipulateBroadcast::Service>("manipulate_broadcast")?;
-    let get_broadcasted_frames_client =
-        node.create_client::<GetBroadcastedFrames::Service>("get_broadcasted_frames")?;
 
     let waiting_for_tf_lookup_server = node.is_available(&tf_lookup_client)?;
     let waiting_for_tf_broadcast_server = node.is_available(&tf_broadcast_client)?;
-    let waiting_for_get_broadcasted_frames_server =
-        node.is_available(&get_broadcasted_frames_client)?;
 
-    r2r::log_info!("log", "TF Scene Manipulation Service Node started");
+    let handle = std::thread::spawn(move || loop {
+        &node.spin_once(std::time::Duration::from_millis(10));
+    });
+
+    r2r::log_warn!("sms", "Waiting for tf lookup service...");
+    waiting_for_tf_lookup_server.await?;
+    r2r::log_info!("sms", "TF lookup service available.");
+
+    r2r::log_warn!("sms", "Waiting for tf broadcast service...");
+    waiting_for_tf_broadcast_server.await?;
+    r2r::log_info!("sms", "TF broadcast service available.");
+
+    r2r::log_info!("sms", "TF Scene Manipulation Service Node started.");
 
     tokio::task::spawn(async move {
         let res = scene_manipulation_server(
             server_requests,
             tf_lookup_client,
             tf_broadcast_client,
-            get_broadcasted_frames_client,
-            waiting_for_tf_lookup_server,
-            waiting_for_tf_broadcast_server,
-            waiting_for_get_broadcasted_frames_server,
         )
         .await;
         match res {
-            Ok(()) => r2r::log_info!("log", "Scene Manipulation Service call succeeded"),
-            Err(e) => r2r::log_error!("log", "Scene Manipulation Service call failed with: {}", e),
+            Ok(()) => r2r::log_info!("sms", "Scene Manipulation Service call succeeded."),
+            Err(e) => r2r::log_error!("sms", "Scene Manipulation Service call failed with: {}", e),
         };
-    });
-
-    let handle = std::thread::spawn(move || loop {
-        node.spin_once(std::time::Duration::from_millis(10));
     });
 
     handle.join().unwrap();
@@ -58,133 +56,106 @@ async fn scene_manipulation_server(
     mut service: impl Stream<Item = ServiceRequest<ManipulateScene::Service>> + Unpin,
     tf_lookup_client: r2r::Client<LookupTransform::Service>,
     tf_broadcast_client: r2r::Client<ManipulateBroadcast::Service>,
-    get_broadcasted_frames_client: r2r::Client<GetBroadcastedFrames::Service>,
-    waiting_for_tf_lookup_server: impl Future<Output = r2r::Result<()>>,
-    waiting_for_tf_broadcast_server: impl Future<Output = r2r::Result<()>>,
-    waiwaiting_for_get_broadcasted_frames_server: impl Future<Output = r2r::Result<()>>,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    r2r::log_warn!("log", "Waiting for tf lookup service...");
-    waiting_for_tf_lookup_server.await?;
-    r2r::log_info!("log", "TF lookup service available.");
-
-    r2r::log_warn!("log", "Waiting for tf broadcast service...");
-    waiting_for_tf_broadcast_server.await?;
-    r2r::log_info!("log", "TF broadcast service available.");
-
-    r2r::log_warn!("log", "Waiting for get broadcasted frames service...");
-    waiwaiting_for_get_broadcasted_frames_server.await?;
-    r2r::log_info!("log", "Get broadcasted frames service available.");
-
     loop {
         match service.next().await {
-            Some(req) => match req.message.command.as_str() {
+            Some(request) => match request.message.command.as_str() {
                 "update" => {
-                    let frames_result =
-                        get_broadcasted_frames(&get_broadcasted_frames_client).await;
-                    match frames_result {
-                        Some(frames) => {
-                            if frames.static_transforms.contains(&req.message.child_frame) {
-                                r2r::log_warn!(
-                                    "log",
-                                    "Can't manipulate static frame {}.",
-                                    req.message.child_frame
-                                );
-                            } else if frames.active_transforms.contains(&req.message.child_frame) {
-                                if !req.message.same_position_in_world {
-                                    manipulate_broadcast(
-                                        "update",
-                                        make_transform_stamped(
-                                            req.message.transform.clone(),
-                                            &req.message.child_frame,
-                                            &req.message.parent_frame,
-                                        ),
-                                        &tf_broadcast_client,
-                                    )
-                                    .await;
-                                    let resp = ManipulateScene::Response { success: true };
-                                    req.respond(resp).expect("Could not send service response.");
-                                    break;
-                                } else {
-                                    let tf_result = lookup_tf(
-                                        &req.message.parent_frame,
-                                        &req.message.child_frame,
-                                        5000,
-                                        &tf_lookup_client,
-                                    )
-                                    .await;
-                                    match tf_result {
-                                        Some(x) => {
-                                            manipulate_broadcast(
-                                                "update",
-                                                make_transform_stamped(
-                                                    x.transform.transform.clone(),
-                                                    &req.message.child_frame,
-                                                    &req.message.parent_frame,
-                                                ),
-                                                &tf_broadcast_client,
-                                            )
-                                            .await;
-                                            let resp = ManipulateScene::Response { success: true };
-                                            req.respond(resp)
-                                                .expect("Could not send service response.");
-                                            break;
-                                        }
-                                        None => {
-                                            r2r::log_error!(
-                                                "log",
-                                                "Got None result from tf_lookup."
-                                            );
-                                            let resp = ManipulateScene::Response { success: false };
-                                            req.respond(resp)
-                                                .expect("Could not send service response.");
-                                            break;
-                                        }
-                                    }
-                                }
-                            } else {
-                                manipulate_broadcast(
-                                    "add",
-                                    make_transform_stamped(
-                                        req.message.transform.clone(),
-                                        &req.message.child_frame,
-                                        &req.message.parent_frame,
-                                    ),
-                                    &tf_broadcast_client,
-                                )
-                                .await;
-                                let resp = ManipulateScene::Response { success: true };
-                                req.respond(resp).expect("could not send service response");
-                                break;
-                            }
-                        }
-                        None => r2r::log_error!(
-                            "log",
-                            "Got None result from get broadcasted frames."
-                        )
-                    }
+                    r2r::log_info!("sms", "Got 'update' request: {:?}.", request.message);
+                    let response =
+                        update_frame(&request.message, &tf_lookup_client, &tf_broadcast_client)
+                            .await;
+                    request
+                        .respond(response)
+                        .expect("Could not send service response.");
+                    continue;
                 }
                 "remove" => {
-                    manipulate_broadcast(
-                        "remove",
+                    r2r::log_info!("sms", "Got 'remove' request: {:?}.", request.message);
+                    let response = remove_frame(&request.message, &tf_broadcast_client).await;
+                    request
+                        .respond(response)
+                        .expect("Could not send service response.");
+                    continue;
+                }
+                _ => r2r::log_error!("sms", "No such command."),
+            },
+            None => {},
+        }
+    }
+}
+
+async fn update_frame(
+    message: &r2r::tf_tools_msgs::srv::ManipulateScene::Request,
+    tf_lookup_client: &r2r::Client<LookupTransform::Service>,
+    tf_broadcast_client: &r2r::Client<ManipulateBroadcast::Service>,
+) -> ManipulateScene::Response {
+    match message.same_position_in_world {
+        true => {
+            match lookup_tf(
+                &message.parent_frame,
+                &message.child_frame,
+                5000, //message.tf_lookup_deadline,
+                &tf_lookup_client,
+            )
+            .await
+            {
+                Some(tf) => {
+                    match manipulate_broadcast(
+                        "update",
                         make_transform_stamped(
-                            req.message.transform.clone(),
-                            &req.message.child_frame,
-                            &req.message.parent_frame,
+                            tf.transform.transform.clone(),
+                            &message.child_frame,
+                            &message.parent_frame,
                         ),
                         &tf_broadcast_client,
                     )
-                    .await;
-                    let resp = ManipulateScene::Response { success: true };
-                    req.respond(resp).expect("could not send service response");
-                    break;
+                    .await
+                    {
+                        Some(value) => ManipulateScene::Response { success: value },
+                        None => ManipulateScene::Response { success: false },
+                    }
                 }
-                _ => (),
-            },
-            None => break,
+                None => ManipulateScene::Response { success: false },
+            }
+        }
+        false => {
+            match manipulate_broadcast(
+                "update",
+                make_transform_stamped(
+                    message.transform.clone(),
+                    &message.child_frame,
+                    &message.parent_frame,
+                ),
+                &tf_broadcast_client,
+            )
+            .await
+            {
+                Some(value) => ManipulateScene::Response { success: value },
+                None => ManipulateScene::Response { success: false },
+            }
         }
     }
+}
 
-    Ok(())
+async fn remove_frame(
+    message: &r2r::tf_tools_msgs::srv::ManipulateScene::Request,
+    tf_broadcast_client: &r2r::Client<ManipulateBroadcast::Service>,
+) -> ManipulateScene::Response {
+    match manipulate_broadcast(
+        "remove",
+        make_transform_stamped(
+            Transform::default(),
+            &message.child_frame,
+            &message.parent_frame,
+        ),
+        &tf_broadcast_client,
+    )
+    .await
+    {
+        Some(value) => ManipulateScene::Response { success: value },
+        None => ManipulateScene::Response { success: false },
+    }
 }
 
 fn make_transform_stamped(transform: Transform, child: &str, parent: &str) -> TransformStamped {
@@ -243,20 +214,20 @@ async fn manipulate_broadcast(
     Some(response.success)
 }
 
-async fn get_broadcasted_frames(
-    client: &r2r::Client<GetBroadcastedFrames::Service>,
-) -> Option<GetBroadcastedFrames::Response> {
-    println!("sending request to tf get broadcasted frames");
+// async fn get_broadcasted_frames(
+//     client: &r2r::Client<GetBroadcastedFrames::Service>,
+// ) -> Option<GetBroadcastedFrames::Response> {
+//     println!("sending request to tf get broadcasted frames");
 
-    let request = GetBroadcastedFrames::Request {};
+//     let request = GetBroadcastedFrames::Request {};
 
-    let response = client
-        .request(&request)
-        .expect("could not send manipulate broadcast request")
-        .await
-        .expect("cancelled");
+//     let response = client
+//         .request(&request)
+//         .expect("could not send manipulate broadcast request")
+//         .await
+//         .expect("cancelled");
 
-    println!("request to sms sent");
+//     println!("request to sms sent");
 
-    Some(response)
-}
+//     Some(response)
+// }

@@ -4,7 +4,7 @@ import rclpy
 from rclpy.node import Node
 from geometry_msgs.msg import TransformStamped
 from tf_tools_msgs.srv import ManipulateBroadcast
-from tf_tools_msgs.srv import GetBroadcastedFrames
+# from tf_tools_msgs.srv import GetBroadcastedFrames
 from std_msgs.msg import Header
 from builtin_interfaces.msg import Time
 import tf2_ros
@@ -22,9 +22,9 @@ class TFBroadcastNode(Node):
             ManipulateBroadcast, "manipulate_broadcast", self.broadcast_callback
         )
         
-        self.get_frames_service = self.create_service(
-            GetBroadcastedFrames, "get_broadcasted_frames", self.get_frames_callback
-        )
+        # self.get_frames_service = self.create_service(
+        #     GetBroadcastedFrames, "get_broadcasted_frames", self.get_frames_callback
+        # )
 
         self.create_timer(0.01, self.tf_broadcaster_timer_callback)
         self.create_timer(1.0, self.static_tf_broadcaster_timer_callback)
@@ -130,33 +130,82 @@ class TFBroadcastNode(Node):
         tf.transform.rotation.w = item.transform.rotation.w
         return tf
 
-    def get_transform(self, name):
-        for frame in self.active_transforms:
-            if frame.child_frame_id == name:
-                return frame
+    def get_transform(self, name, active):
+        if active:
+            for frame in self.active_transforms:
+                if frame.child_frame_id == name:
+                    return frame
+        else:
+            for frame in self.static_transforms:
+                if frame.child_frame_id == name:
+                    return frame
 
     def broadcast_callback(self, request, response):
-        if request.command == "add":
-            self.active_transforms.append(request.transform)
-            self.get_logger().info(f"Updated active frame '{request.transform.child_frame_id}'.")
-            response.success = True
-            return response
+        active_tf = self.get_transform(request.transform.child_frame_id, True)
+        static_tf = self.get_transform(request.transform.child_frame_id, False)
         if request.command == "update":
-            self.active_transforms.remove(self.get_transform(request.transform.child_frame_id))
-            self.active_transforms.append(request.transform)
-            self.get_logger().info(f"Updated active frame '{request.transform.child_frame_id}'.")
-            response.success = True
-            return response
+            if active_tf != None:
+                if active_tf in self.active_transforms:
+                    self.active_transforms.remove(active_tf)
+                    self.active_transforms.append(request.transform)
+                    self.get_logger().info(f"Updated active frame '{request.transform.child_frame_id}'.")
+                    response.success = True
+                    return response
+                else:
+                    self.get_logger().error(f"Found active name '{request.transform.child_frame_id}', but frame is wrong, investigate.")
+                    response.success = False
+                    return response
+            else:
+                if static_tf != None:
+                    if static_tf in self.static_transforms:
+                        self.get_logger().warn(f"Can't manipulate static frame '{request.transform.child_frame_id}'.")
+                        response.success = False
+                        return response
+                    else:
+                        self.get_logger().warn(f"Can't manipulate static frame '{request.transform.child_frame_id}'.")
+                        self.get_logger().error(f"Found static name '{request.transform.child_frame_id}', but frame is wrong, investigate.")
+                        response.success = False
+                        return response
+                else:
+                    self.active_names.append(request.transform.child_frame_id)
+                    self.active_transforms.append(request.transform)
+                    self.get_logger().info(f"Added active frame '{request.transform.child_frame_id}'.")
+                    response.success = True
+                    return response
+                    
+                
         if request.command == "remove":
-            self.get_logger().info(f"Removing active frame '{request.transform.child_frame_id}'.")
-            self.active_transforms.remove(self.get_transform(request.transform.child_frame_id))
-            response.success = True
-            return response
+            if active_tf != None:
+                if active_tf in self.active_transforms:
+                    self.get_logger().info(f"Removing active frame '{request.transform.child_frame_id}'.")
+                    self.active_transforms.remove(active_tf)
+                    self.active_names.remove(request.transform.child_frame_id)
+                    response.success = True
+                    return response
+                else:
+                    self.get_logger().error(f"Found active name '{request.transform.child_frame_id}', but frame is wrong, investigate.")
+                    response.success = False
+                    return response
+            else:
+                if static_tf != None:
+                    if static_tf in self.static_transforms:
+                        self.get_logger().warn(f"Can't remove static frame '{request.transform.child_frame_id}'.")
+                        response.success = False
+                        return response
+                    else:
+                        self.get_logger().warn(f"Can't manipulate static frame '{request.transform.child_frame_id}'.")
+                        self.get_logger().error(f"Found static name '{request.transform.child_frame_id}', but frame is wrong, investigate.")
+                        response.success = False
+                        return response
+                else:
+                    self.get_logger().info(f"Active frame '{request.transform.child_frame_id}' doesn't exist.")
+                    response.success = False
+                    return response
 
-    def get_frames_callback(self, request, response):
-        response.active_transforms = self.active_names
-        response.static_transforms = self.static_names
-        return response
+    # def get_frames_callback(self, request, response):
+    #     response.active_transforms = self.active_names
+    #     response.static_transforms = self.static_names
+    #     return response
 
 def main(args=None):
     rclpy.init(args=args)

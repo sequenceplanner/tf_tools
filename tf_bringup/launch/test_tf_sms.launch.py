@@ -68,7 +68,7 @@ def generate_launch_description():
         tf_lookup_node,
         tf_broadcast_node,
         tf_sms_node,
-        tf_sms_client_node,
+        # tf_sms_client_node,
         rviz_node
     ]
 
