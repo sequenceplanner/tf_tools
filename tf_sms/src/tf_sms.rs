@@ -213,21 +213,3 @@ async fn manipulate_broadcast(
 
     Some(response.success)
 }
-
-// async fn get_broadcasted_frames(
-//     client: &r2r::Client<GetBroadcastedFrames::Service>,
-// ) -> Option<GetBroadcastedFrames::Response> {
-//     println!("sending request to tf get broadcasted frames");
-
-//     let request = GetBroadcastedFrames::Request {};
-
-//     let response = client
-//         .request(&request)
-//         .expect("could not send manipulate broadcast request")
-//         .await
-//         .expect("cancelled");
-
-//     println!("request to sms sent");
-
-//     Some(response)
-// }
