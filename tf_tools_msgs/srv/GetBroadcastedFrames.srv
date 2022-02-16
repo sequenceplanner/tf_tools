@@ -1,7 +1,0 @@
-# Request
-
----
-
-# Reply
-string[] active_transforms
-string[] static_transforms

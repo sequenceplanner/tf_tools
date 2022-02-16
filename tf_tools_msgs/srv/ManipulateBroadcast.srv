@@ -1,8 +1,0 @@
-# Request
-string command
-geometry_msgs/TransformStamped transform
-
----
-
-# Reply
-bool success
