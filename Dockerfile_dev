@@ -29,4 +29,7 @@ RUN rm -r /ws/src/$project_name/src/ &&\
     rm -r /ws/src/tf_lookup/  &&\
     rm -r /ws/src/tf_tools_msgs/ 
 
+RUN sed --in-place --expression \
+    '$isource "/ws/install/setup.bash"' \
+    /entrypoint.sh
 RUN echo '. /entrypoint.sh' >> ~/.bashrc 
