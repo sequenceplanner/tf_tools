@@ -1,0 +1,32 @@
+FROM kristoferb/spbase_ros2:galactic
+
+ARG project_name=tf_sms
+
+# install any deps here and clone any external repos into the workspace
+COPY ../tf_bringup/ /ws/src/tf_bringup/
+COPY ../tf_broadcast/ /ws/src/tf_broadcast/
+COPY ../tf_lookup/ /ws/src/tf_lookup/
+COPY ../tf_tools_msgs/ /ws/src/tf_tools_msgs/
+
+# Copy the packages and only the rust package and cargo files to build the rust deps.
+# these files can not be changed when working in the container
+COPY ./$project_name/Cargo.* \
+    ./$project_name/package.xml \
+    ./$project_name/r2r_cargo.cmake \
+    ./$project_name/CMakeLists.txt \
+    /ws/src/$project_name/
+RUN . /opt/ros/$ROS_DISTRO/setup.sh &&\
+    cd /ws &&\
+    mkdir ./src/$project_name/src/ &&\
+    echo "fn main() {}" > ./src/$project_name/src/tf_sms.rs &&\
+    echo "fn main() {}" > ./src/$project_name/src/tf_sms_test_client.rs &&\
+    colcon build
+
+# remove code that should be mounted
+RUN rm -r /ws/src/$project_name/src/ &&\
+    rm -r /ws/src/tf_bringup/  &&\
+    rm -r /ws/src/tf_broadcast/  &&\
+    rm -r /ws/src/tf_lookup/  &&\
+    rm -r /ws/src/tf_tools_msgs/ 
+
+RUN echo '. /entrypoint.sh' >> ~/.bashrc 

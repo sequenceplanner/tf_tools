@@ -15,8 +15,6 @@ r2r_cargo(std_msgs               # just to test that it works
           rcl_action             # as of r2r 0.1.0, we also need the action api
           tf2_msgs
           tf_tools_msgs               
-          rmw_fastrtps_cpp       # (needed to build with RMW_IMPLEMENTATION=rmw_fastrtps_cpp)
-          FastRTPS               # (needed to build with RMW_IMPLEMENTATION=rmw_fastrtps_cpp)
          )
 
 # install binaries
