@@ -28,6 +28,7 @@ rosidl_generate_interfaces(${PROJECT_NAME}
   "srv/LookupTransform.srv"
   "srv/ManipulateBroadcast.srv"
   "srv/GetBroadcastedFrames.srv"
+  "srv/LoadBroadcastedFrames.srv"
   DEPENDENCIES
     builtin_interfaces
     geometry_msgs

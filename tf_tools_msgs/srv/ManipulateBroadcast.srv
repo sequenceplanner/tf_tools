@@ -1,5 +1,5 @@
 # Request
-string command
+string command  # update or remove
 geometry_msgs/TransformStamped transform
 
 ---

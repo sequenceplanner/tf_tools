@@ -1,0 +1,10 @@
+# Request
+geometry_msgs/TransformStamped[] active_transforms
+geometry_msgs/TransformStamped[] static_transforms
+string[] json # if not empty, will be used instead of above. Following the format of the scenario json files
+bool reload     # if true, will remove and reload all existing transform. If false, will keep transform and update only the ones included in the request
+
+---
+
+# Reply
+bool success

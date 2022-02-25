@@ -1,17 +1,20 @@
+from turtle import st
+from typing import Optional, List
 import os
 import json
 import rclpy
 from rclpy.node import Node
 from geometry_msgs.msg import TransformStamped
 from tf_tools_msgs.srv import ManipulateBroadcast
-# from tf_tools_msgs.srv import GetBroadcastedFrames
+from tf_tools_msgs.srv import GetBroadcastedFrames
+from tf_tools_msgs.srv import LoadBroadcastedFrames
 from std_msgs.msg import Header
 from builtin_interfaces.msg import Time
 import tf2_ros
 
 class TFBroadcastNode(Node):
     def __init__(self):
-        super().__init__("tf_broadcast")
+        super().__init__("tf_broadcast") # type: ignore
 
         self.tf_buffer = tf2_ros.Buffer()
         self.tf_listener = tf2_ros.TransformListener(self.tf_buffer, self)
@@ -22,77 +25,40 @@ class TFBroadcastNode(Node):
             ManipulateBroadcast, "manipulate_broadcast", self.broadcast_callback
         )
         
-        # self.get_frames_service = self.create_service(
-        #     GetBroadcastedFrames, "get_broadcasted_frames", self.get_frames_callback
-        # )
+        self.get_frames_service = self.create_service(
+            GetBroadcastedFrames, "get_broadcasted_frames", self.get_frames_callback
+        )
+
+        self.load_frames_service = self.create_service(
+            LoadBroadcastedFrames, "load_broadcasted_frames", self.load_frames_callback
+        )
 
         self.create_timer(0.01, self.tf_broadcaster_timer_callback)
         self.create_timer(1.0, self.static_tf_broadcaster_timer_callback)
 
-        self.get_logger().info("TF Scene Manipulation Node started.")
+        self.static_transforms: List[TransformStamped] = []
+        self.active_transforms: List[TransformStamped] = []
 
-        self.scenario_path = self.declare_parameter("scenario_path", "default_value")
-        self.scenario_path = (
-            self.get_parameter("scenario_path").get_parameter_value().string_value
-        )
+        self.get_logger().info("TF Broadcaster Node started.")
 
-        self.included_items_paths = []
-        if self.scenario_path == "default_value":
-            self.get_logger().warn("Parameter 'scenario_path' not specified.")
-        else:
-            for thing in os.listdir(os.path.join(self.scenario_path)):
-                thing_parameters = {}
-                with open(os.path.join(self.scenario_path, thing)) as jsonfile:
-                    try:
-                        thing_parameters = json.load(jsonfile)
-                    except ValueError as e:
-                        self.get_logger().error("Couldn't load json file.")
-                    else:
-                        if thing_parameters["show"]:
-                            self.included_items_paths.append(
-                                os.path.join(self.scenario_path, thing)
-                            )
 
-        self.included_items = [json.load(open(x)) for x in self.included_items_paths]
-
-        self.static_transforms = []
-        self.static_names = []
-        self.active_transforms = []
-        self.active_names = []
-
-        for item in self.included_items:
-            if item["active"]:
-                self.active_names.append(item["child_frame"])
-                self.active_transforms.append(self.generate_transform_from_json(item))
-            else:
-                self.static_names.append(item["child_frame"])
-                self.static_transforms.append(self.generate_transform_from_json(item))
-
-        self.get_logger().info(
-            f"Added static frames: '{self.static_names}'."
-        )
-        self.get_logger().info(
-            f"Added active frames: '{self.active_names}'."
-        )
 
     def tf_broadcaster_timer_callback(self):
         try:
+            self.active_transforms = [t for t in self.active_transforms if t is not None and t != TransformStamped()]
             for tf in self.active_transforms:
-                if tf is not None:
-                    if tf != TransformStamped():
-                        current_time = self.get_clock().now().seconds_nanoseconds()
-                        t = Time()
-                        t.sec = current_time[0]
-                        t.nanosec = current_time[1]
-                        tf.header.stamp = t
-                        self.tf_broadcaster.sendTransform(tf)
+                current_time = self.get_clock().now().seconds_nanoseconds()
+                t = Time()
+                t.sec = current_time[0]
+                t.nanosec = current_time[1]
+                tf.header.stamp = t
+            self.tf_broadcaster.sendTransform(self.active_transforms)
         finally:
             pass
 
     def static_tf_broadcaster_timer_callback(self):
         try:
-            for tf in self.static_transforms:
-                self.static_tf_broadcaster.sendTransform(tf)
+            self.static_tf_broadcaster.sendTransform(self.static_transforms)
         finally:
             pass
 
@@ -167,7 +133,6 @@ class TFBroadcastNode(Node):
                         response.success = False
                         return response
                 else:
-                    self.active_names.append(request.transform.child_frame_id)
                     self.active_transforms.append(request.transform)
                     self.get_logger().info(f"Added active frame '{request.transform.child_frame_id}'.")
                     response.success = True
@@ -179,7 +144,6 @@ class TFBroadcastNode(Node):
                 if active_tf in self.active_transforms:
                     self.get_logger().info(f"Removing active frame '{request.transform.child_frame_id}'.")
                     self.active_transforms.remove(active_tf)
-                    self.active_names.remove(request.transform.child_frame_id)
                     response.success = True
                     return response
                 else:
@@ -202,10 +166,64 @@ class TFBroadcastNode(Node):
                     response.success = False
                     return response
 
-    # def get_frames_callback(self, request, response):
-    #     response.active_transforms = self.active_names
-    #     response.static_transforms = self.static_names
-    #     return response
+    def get_frames_callback(self, request: GetBroadcastedFrames.Request, response: GetBroadcastedFrames.Response) -> GetBroadcastedFrames.Response:
+        response.active_transforms = self.active_transforms
+        response.static_transforms = self.static_transforms
+        return response
+
+    def load_frames_callback(self, request: LoadBroadcastedFrames.Request, response: LoadBroadcastedFrames.Response) -> LoadBroadcastedFrames.Response:
+        self.included_items_paths = []
+        if list(request.json):
+            act_ts = []
+            st_ts = []
+            for json in request.json:
+                try:
+                    t = json.load(json)
+                except ValueError as e:
+                    self.get_logger().error("Couldn't load json in broadcaster: {e}")
+                    response.success = False
+                    return response
+                else:
+                    if t["show"] and t["active"]:
+                        act_ts.append(self.generate_transform_from_json(t))
+                    if t["show"]:
+                        st_ts.append(self.generate_transform_from_json(t))
+            
+            if request.reload:
+                self.active_transforms = act_ts
+                self.static_transforms = st_ts
+                self.get_logger().info(
+                    f"reloading all frames"
+                )
+            else:
+                self.upd_transforms(act_ts, st_ts)
+
+        elif request.reload:
+            self.active_transforms = list(request.active_transforms)
+            self.static_transforms = list(request.static_transforms)
+            self.get_logger().info(
+                f"reloading all frames"
+            )
+        else:
+           self.upd_transforms(list(request.active_transforms), list(request.static_transforms)) 
+
+        response.success = True
+        return response
+                
+    def upd_transforms(self, active_ts: List[TransformStamped], static_ts: List[TransformStamped]):
+        m = set([x.child_frame_id for x in active_ts])
+        self.active_transforms = [x for x in self.active_transforms if not x in m]
+        self.active_transforms.extend(active_ts)
+        
+        m = set([x.child_frame_id for x in static_ts])
+        self.static_transforms = [x for x in self.static_transforms if not x in m]
+        self.static_transforms.extend(static_ts)
+
+        self.get_logger().info(
+            f"updated transforms"
+        )
+
+
 
 def main(args=None):
     rclpy.init(args=args)
