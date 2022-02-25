@@ -7,6 +7,7 @@ ARG project_name=tf_sms
 # install any deps here and clone any external repos into the workspace
 COPY ../tf_bringup/ /ws/src/tf_bringup/
 COPY ../tf_broadcast/ /ws/src/tf_broadcast/
+COPY ../tf_scenario_loader/ /ws/src/tf_scenario_loader/
 COPY ../tf_lookup/ /ws/src/tf_lookup/
 COPY ../tf_tools_msgs/ /ws/src/tf_tools_msgs/
 
@@ -28,10 +29,12 @@ RUN . /opt/ros/$ROS_DISTRO/setup.bash &&\
 RUN rm -r /ws/src/$project_name/src/ &&\
     rm -r /ws/src/tf_bringup/  &&\
     rm -r /ws/src/tf_broadcast/  &&\
+    rm -r /ws/src/tf_scenario_loader/  &&\
     rm -r /ws/src/tf_lookup/  &&\
     rm -r /ws/src/tf_tools_msgs/ 
 
 RUN sed --in-place --expression \
     '$isource "/ws/install/setup.bash"' \
     /entrypoint.sh
-RUN echo '. /entrypoint.sh' >> ~/.bashrc 
+RUN echo '. /opt/ros/$ROS_DISTRO/setup.bash' >> ~/.bashrc 
+RUN echo '. /ws/install/setup.bash' >> ~/.bashrc 
