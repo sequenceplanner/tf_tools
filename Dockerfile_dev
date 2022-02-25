@@ -1,5 +1,7 @@
 FROM kristoferb/spbase_ros2:galactic
 
+SHELL ["/bin/bash", "-c"]
+
 ARG project_name=tf_sms
 
 # install any deps here and clone any external repos into the workspace
@@ -15,7 +17,7 @@ COPY ./$project_name/Cargo.* \
     ./$project_name/r2r_cargo.cmake \
     ./$project_name/CMakeLists.txt \
     /ws/src/$project_name/
-RUN . /opt/ros/$ROS_DISTRO/setup.sh &&\
+RUN . /opt/ros/$ROS_DISTRO/setup.bash &&\
     cd /ws &&\
     mkdir ./src/$project_name/src/ &&\
     echo "fn main() {}" > ./src/$project_name/src/tf_sms.rs &&\
