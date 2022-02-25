@@ -12,7 +12,6 @@ def generate_launch_description():
         "scenario_path": os.path.join(tf_scene_dir, "scenarios", scenario)
     }
 
-    rviz_config_file = os.path.join(tf_bringup_dir, "config", f"{scenario}.rviz")
     
     tf_lookup_node = Node(
         package="tf_lookup",
@@ -44,21 +43,22 @@ def generate_launch_description():
         emulate_tty=True
     )
 
-    rviz_node = Node(
-        package="rviz2",
-        executable="rviz2",
-        namespace="",
-        output="screen",
-        arguments=["-d", rviz_config_file],
-        remappings=[("/tf", "tf"), ("/tf_static", "tf_static")],
-        emulate_tty=True
-    )
+    # tf_test_load = Node(
+    #     package="tf_scenario_loader",
+    #     executable="tf_scenario_loader",
+    #     namespace="",
+    #     output="screen",
+    #     parameters=[parameters],
+    #     remappings=[("/tf", "tf"), ("/tf_static", "tf_static")],
+    #     emulate_tty=True
+    # )
+    
 
     nodes_to_start = [
         tf_lookup_node,
         tf_broadcast_node,
         tf_sms_node,
-        rviz_node
+        #tf_test_load
     ]
 
     return LaunchDescription(nodes_to_start)

@@ -9,6 +9,8 @@ services:
       - ../tf_sms/src:/ws/src/tf_sms/src
       - ../tf_bringup/:/ws/src/tf_bringup/
       - ../tf_broadcast/:/ws/src/tf_broadcast/
+      - ../tf_scenario_loader/:/ws/src/tf_scenario_loader/
       - ../tf_lookup/:/ws/src/tf_lookup/
       - ../tf_tools_msgs/:/ws/src/tf_tools_msgs/
+      - ../tf_scene/:/ws/src/tf_scene/
       
