@@ -69,8 +69,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let scenario = list_frames_in_dir(&path_param).await;
 
     // TODO: offer a service to change the scenario folder?
-    // TODO: offer a service to load new frames into memory (sms)
-    // TODO: differentiate frames added through service or loaded from folder
 
     let init_loaded = load_scenario(&scenario).await;
     r2r::log_info!(
@@ -231,14 +229,14 @@ async fn scene_manipulation_server(
     loop {
         match service.next().await {
             Some(request) => match request.message.command.as_str() {
-                // "update" => {
-                //     r2r::log_info!(NODE_ID, "Got 'update' request: {:?}.", request.message);
-                //     let response = update_frame(&request.message, &tf_lookup_client, &frames).await;
-                //     request
-                //         .respond(response)
-                //         .expect("Could not send service response.");
-                //     continue;
-                // }
+                "update" => {
+                    r2r::log_info!(NODE_ID, "Got 'update' request: {:?}.", request.message);
+                    let response = update_frame(&request.message, &tf_lookup_client, &frames).await;
+                    request
+                        .respond(response)
+                        .expect("Could not send service response.");
+                    continue;
+                }
                 "remove" => {
                     r2r::log_info!(NODE_ID, "Got 'remove' request: {:?}.", request.message);
                     let response = remove_frame(&request.message, &frames).await;
@@ -257,39 +255,134 @@ async fn scene_manipulation_server(
     }
 }
 
-// async fn update_frame(
-//     message: &r2r::tf_tools_msgs::srv::ManipulateScene::Request,
-//     tf_lookup_client: &r2r::Client<LookupTransform::Service>,
-//     frames: &Arc<Mutex<HashMap<String, ExtendedFrameData>>>,
-// ) -> ManipulateScene::Response {
-//     let frames_local = frames.lock().unwrap().clone();
-//     match frames_local.contains_key(&message.child_frame_id) {
-//         true => {
-//             // let frame
-//             ManipulateScene::Response { success: true }
-//         }
-//         false => match lookup_tf("world", &message.parent_frame, 3000, &tf_lookup_client).await {
-//             Some(_) => {
-//                 update_frame_callback(&message, &message.transform, &frames);
-//                 ManipulateScene::Response { success: true }
-//             }
-//             None => {
-//                 r2r::log_error!(NODE_ID, "Parent doesn't exist in world.");
-//                 ManipulateScene::Response { success: false }
-//             }
-//         },
-//     }
-// }
-
-async fn update_frame_callback(
+async fn update_frame(
     message: &r2r::tf_tools_msgs::srv::ManipulateScene::Request,
-    transform: &Transform,
+    tf_lookup_client: &r2r::Client<LookupTransform::Service>,
     frames: &Arc<Mutex<HashMap<String, ExtendedFrameData>>>,
-) -> () {
-    let frames_local = frames.lock().unwrap().clone();
+) -> ManipulateScene::Response {
+    let mut frames_local = frames.lock().unwrap().clone();
     match frames_local.contains_key(&message.child_frame_id) {
-        true => {}
-        false => {}
+        // TODO: check if parent exists in the world
+        // TODO: check if this addition will produce a cycle
+        false => {
+            frames_local.insert(
+                message.child_frame_id.clone(),
+                ExtendedFrameData {
+                    frame_data: FrameData {
+                        parent_frame_id: message.parent_frame_id.clone(),
+                        child_frame_id: message.child_frame_id.clone(),
+                        transform: message.transform.clone(),
+                        active: true,
+                    },
+                    folder_loaded: false,
+                },
+            );
+            *frames.lock().unwrap() = frames_local;
+            let info = format!("Frame '{}' added to the scene.", message.child_frame_id);
+            r2r::log_info!(NODE_ID, "{}", info);
+            ManipulateScene::Response {
+                success: true,
+                info,
+            }
+        }
+        true => match frames_local.get(&message.child_frame_id) {
+            Some(frame_data) => match frame_data.frame_data.active {
+                false => {
+                    let info = format!(
+                        "Can't manipulate static frame '{}'.",
+                        message.child_frame_id
+                    );
+                    r2r::log_error!(NODE_ID, "{}", info);
+                    ManipulateScene::Response {
+                        success: false,
+                        info,
+                    }
+                }
+                // TODO: check if parent exists in the world
+                // TODO: check if this addition will produce a cycle
+                true => match message.same_position_in_world {
+                    false => {
+                        frames_local.insert(
+                            message.child_frame_id.clone(),
+                            ExtendedFrameData {
+                                frame_data: FrameData {
+                                    parent_frame_id: message.parent_frame_id.clone(),
+                                    child_frame_id: message.child_frame_id.clone(),
+                                    transform: message.transform.clone(),
+                                    active: true,
+                                },
+                                folder_loaded: false,
+                            },
+                        );
+                        *frames.lock().unwrap() = frames_local;
+                        let info =
+                            format!("Frame '{}' added to the scene.", message.child_frame_id);
+                        r2r::log_info!(NODE_ID, "{}", info);
+                        ManipulateScene::Response {
+                            success: true,
+                            info,
+                        }
+                    }
+                    true => {
+                        match lookup_tf(
+                            &message.parent_frame_id,
+                            &message.child_frame_id,
+                            3000,
+                            &tf_lookup_client,
+                        )
+                        .await
+                        {
+                            Some(t) => {
+                                frames_local.insert(
+                                    message.child_frame_id.clone(),
+                                    ExtendedFrameData {
+                                        frame_data: FrameData {
+                                            parent_frame_id: message.parent_frame_id.clone(),
+                                            child_frame_id: message.child_frame_id.clone(),
+                                            transform: t.transform.clone(),
+                                            active: true,
+                                        },
+                                        folder_loaded: false,
+                                    },
+                                );
+                                *frames.lock().unwrap() = frames_local;
+                                let info = format!(
+                                    "Frame '{}' added to the scene.",
+                                    message.child_frame_id
+                                );
+                                r2r::log_info!(NODE_ID, "{}", info);
+                                ManipulateScene::Response {
+                                    success: true,
+                                    info,
+                                }
+                            }
+                            None => {
+                                let info = format!(
+                                    "Failed to lookup transform from '{}' to '{}'.",
+                                    message.parent_frame_id, message.child_frame_id
+                                );
+                                r2r::log_error!(NODE_ID, "{}", info);
+                                ManipulateScene::Response {
+                                    success: false,
+                                    info,
+                                }
+                            }
+                        }
+                    }
+                },
+            },
+            None => {
+                let info = format!(
+                    "Couldn't find the frame '{}' in this broadcaster.",
+                    message.child_frame_id
+                );
+                r2r::log_warn!(NODE_ID, "{}", info);
+                ManipulateScene::Response {
+                    success: false,
+                    info,
+                }
+            }
+        },
     }
 }
 
@@ -311,7 +404,10 @@ async fn remove_frame(
         true => match frames_local.get(&message.child_frame_id) {
             Some(frame_data) => match frame_data.frame_data.active {
                 false => {
-                    let info = "Can't manipulate static frames.".to_string();
+                    let info = format!(
+                        "Can't manipulate static frame '{}'.",
+                        message.child_frame_id
+                    );
                     r2r::log_error!(NODE_ID, "{}", info);
                     ManipulateScene::Response {
                         success: false,
@@ -356,7 +452,10 @@ async fn remove_frame(
                 },
             },
             None => {
-                let info = "Couldn't find the frame in this broadcaster.".to_string();
+                let info = format!(
+                    "Couldn't find the frame '{}' in this broadcaster.",
+                    message.child_frame_id
+                );
                 r2r::log_warn!(NODE_ID, "{}", info);
                 ManipulateScene::Response {
                     success: false,
@@ -483,14 +582,14 @@ async fn folder_manupulation_callback(
         // removed every RELOAD_SCENE_RATE since it is not in the folder
         let mut folder_scenario = load_scenario(&dir_frames).await;
         folder_scenario.retain(|_, v| v.folder_loaded);
-        let mut local_scenario = frames.lock().unwrap().clone();
-        local_scenario.retain(|_, v| v.folder_loaded);
+        let mut frames_local = frames.lock().unwrap().clone();
+        frames_local.retain(|_, v| v.folder_loaded);
 
         let folder_vec = folder_scenario
             .iter()
             .map(|(k, _)| k.clone())
             .collect::<Vec<String>>();
-        let loaded_vec = local_scenario
+        let loaded_vec = frames_local
             .iter()
             .map(|(k, _)| k.clone())
             .collect::<Vec<String>>();
@@ -511,14 +610,56 @@ async fn folder_manupulation_callback(
 
         let mut transforms_local = frames.lock().unwrap().clone();
 
+        // TODO: check if parent exists in the world
+        // TODO: check if this addition will produce a cycle
         to_be_added.iter().for_each(|x| {
-            transforms_local.insert(x.clone(), folder_scenario.get(&*x).unwrap().clone());
-            r2r::log_info!(NODE_ID, "Added frame: '{}'.", x);
+            match frames_local.get(x) {
+                Some(frame_data) => match frame_data.frame_data.active {
+                    false => {
+                        let info = format!(
+                            "Can't manipulate static frame '{}'.",
+                            x
+                        );
+                        r2r::log_error!(NODE_ID, "{}", info);
+                    },
+                    true => {
+                        transforms_local.insert(x.clone(), folder_scenario.get(&*x).unwrap().clone());
+                        r2r::log_info!(NODE_ID, "Added frame: '{}'.", x);
+                    }
+                },
+                None => {
+                    let info = format!(
+                        "Couldn't find the frame '{}' in this broadcaster.",
+                        x
+                    );
+                    r2r::log_warn!(NODE_ID, "{}", info);
+                }
+            }
         });
 
         to_be_removed.iter().for_each(|x| {
-            transforms_local.remove(x);
-            r2r::log_info!(NODE_ID, "Removed frame: '{}'.", x);
+            match frames_local.get(x) {
+                Some(frame_data) => match frame_data.frame_data.active {
+                    false => {
+                        let info = format!(
+                            "Can't manipulate static frame '{}'.",
+                            x
+                        );
+                        r2r::log_error!(NODE_ID, "{}", info);
+                    },
+                    true => {
+                        transforms_local.remove(x);
+                        r2r::log_info!(NODE_ID, "Removed frame: '{}'.", x);
+                    }
+                },
+                None => {
+                    let info = format!(
+                        "Couldn't find the frame '{}' in this broadcaster.",
+                        x
+                    );
+                    r2r::log_warn!(NODE_ID, "{}", info);
+                }
+            }            
         });
 
         *frames.lock().unwrap() = transforms_local;
@@ -529,14 +670,14 @@ async fn folder_manupulation_callback(
 
 // ask the lookup service for transforms from its buffer
 async fn lookup_tf(
-    parent_id: &str,
-    child_id: &str,
+    parent_frame_id: &str,
+    child_frame_id: &str,
     deadline: i32,
     tf_lookup_client: &r2r::Client<LookupTransform::Service>,
 ) -> Option<TransformStamped> {
     let request = LookupTransform::Request {
-        parent_frame_id: parent_id.to_string(),
-        child_frame_id: child_id.to_string(),
+        parent_frame_id: parent_frame_id.to_string(),
+        child_frame_id: child_frame_id.to_string(),
         deadline,
     };
 
@@ -549,8 +690,8 @@ async fn lookup_tf(
     r2r::log_info!(
         NODE_ID,
         "Request to lookup parent '{}' to child '{}' sent.",
-        parent_id,
-        child_id
+        parent_frame_id,
+        child_frame_id
     );
 
     match response.success {
@@ -559,8 +700,8 @@ async fn lookup_tf(
             r2r::log_error!(
                 NODE_ID,
                 "Couldn't lookup tf for parent '{}' and child '{}'.",
-                parent_id,
-                child_id
+                parent_frame_id,
+                child_frame_id
             );
             None
         }
